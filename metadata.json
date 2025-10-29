@@ -1,0 +1,5 @@
+{
+  "name": "Copy of Copy of Marcelino Calvo Order Management",
+  "description": "A dashboard for managing and processing orders from Telegram and voice, with integration for Factusol. Users can review, edit, and export orders.",
+  "requestFramePermissions": []
+}
