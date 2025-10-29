@@ -1,9 +1,10 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import type { Order, Client } from '../types';
 import { OrderStatus } from '../types';
 import { INITIAL_ORDERS } from '../constants';
 import { ReviewModal } from './ReviewModal';
 import { StatusBadge } from './StatusBadge';
+import { NewOrderModal } from './NewOrderModal';
 
 interface DashboardViewProps {
   clients: Client[];
@@ -12,6 +13,9 @@ interface DashboardViewProps {
 export const DashboardView: React.FC<DashboardViewProps> = ({ clients }) => {
   const [orders, setOrders] = useState<Order[]>(INITIAL_ORDERS);
   const [selectedOrder, setSelectedOrder] = useState<{order: Order, client: Client} | null>(null);
+  const [filterStatus, setFilterStatus] = useState<OrderStatus | 'ALL'>('ALL');
+  const [isNewOrderModalOpen, setIsNewOrderModalOpen] = useState(false);
+
 
   const handleOpenReviewModal = (orderId: string) => {
     const orderToReview = orders.find(o => o.id === orderId);
@@ -36,6 +40,25 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ clients }) => {
     handleCloseModal();
     alert(`Pedido ${updatedOrder.id} revisado y guardado. Listo para exportar a Factusol.`);
   }, []);
+  
+  const handleSaveNewOrder = useCallback((newOrder: Omit<Order, 'id' | 'date' | 'total'>) => {
+    const total = newOrder.items.reduce((acc, item) => {
+        const itemTotal = item.quantity * item.price * (1 - item.discount / 100);
+        return acc + itemTotal;
+    }, 0) * 1.21;
+
+    const maxId = Math.max(0, ...orders.map(o => parseInt(o.id.substring(1))));
+    
+    const fullNewOrder: Order = {
+      ...newOrder,
+      id: `#${String(maxId + 1).padStart(5, '0')}`,
+      date: new Date().toISOString().split('T')[0],
+      total: total,
+    };
+    setOrders(prevOrders => [fullNewOrder, ...prevOrders]);
+    setIsNewOrderModalOpen(false);
+    alert(`Nuevo pedido ${fullNewOrder.id} creado.`);
+  }, [orders]);
 
   const handleExportToFactusol = (orderId: string) => {
     alert(`Enviando el Albarán ${orderId} con el Cliente y las líneas de detalle revisadas a la API de Factusol...`);
@@ -119,10 +142,45 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ clients }) => {
     pdfWindow?.document.close();
   };
 
+  const filteredOrders = useMemo(() =>
+    orders.filter(order => filterStatus === 'ALL' || order.status === filterStatus),
+    [orders, filterStatus]
+  );
+  
+  const filterOptions: (OrderStatus | 'ALL')[] = ['ALL', ...Object.values(OrderStatus)];
 
   return (
     <div className="space-y-6">
       <h2 className="text-3xl font-bold text-gray-100 mb-4">Pedidos Procesados (Telegram/Voz)</h2>
+      
+      <div className="bg-gray-800 p-4 rounded-lg shadow-xl flex justify-between items-center flex-wrap gap-4">
+        <div className="flex items-center space-x-2 flex-wrap">
+            <span className="text-sm font-medium text-gray-400">Filtrar por estado:</span>
+            <div className="flex items-center bg-gray-900 rounded-md p-1 flex-wrap">
+                {filterOptions.map(status => (
+                    <button
+                        key={status}
+                        onClick={() => setFilterStatus(status)}
+                        className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${
+                            filterStatus === status
+                            ? 'bg-gray-600 text-white shadow'
+                            : 'text-gray-300 hover:bg-gray-700'
+                        }`}
+                    >
+                        {status === 'ALL' ? 'TODOS' : status}
+                    </button>
+                ))}
+            </div>
+        </div>
+        <button
+            onClick={() => setIsNewOrderModalOpen(true)}
+            className="bg-gray-600 hover:bg-gray-500 text-gray-100 font-semibold py-2 px-4 rounded-md flex items-center"
+        >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" /></svg>
+            Nuevo Pedido
+        </button>
+      </div>
+
       <div className="bg-gray-800 p-6 rounded-lg shadow-xl">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-700">
@@ -137,7 +195,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ clients }) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-700">
-              {orders.map(order => {
+              {filteredOrders.map(order => {
                 const clientName = clients.find(c => c.id === order.clientId)?.name || 'Cliente no encontrado';
                 return (
                   <tr key={order.id}>
@@ -175,6 +233,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ clients }) => {
           client={selectedOrder.client}
           onClose={handleCloseModal}
           onSave={handleSaveReviewedOrder}
+        />
+      )}
+      {isNewOrderModalOpen && (
+        <NewOrderModal 
+            clients={clients}
+            onClose={() => setIsNewOrderModalOpen(false)}
+            onSave={handleSaveNewOrder}
         />
       )}
     </div>
